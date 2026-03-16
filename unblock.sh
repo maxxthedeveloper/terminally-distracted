@@ -37,8 +37,8 @@ EXHALE = 6.0
 CYCLE = INHALE_1 + INHALE_2 + EXHALE
 FPS = 30
 DOT_COUNT = 9
-GRID_W = 32
-GRID_H = 16
+GRID_W = 36
+GRID_H = 18
 ASPECT_X = 0.45
 MIN_RADIUS = 0.25
 MID_RADIUS = 0.70
@@ -67,6 +67,7 @@ LIVE_PHASES = (
 )
 PRELUDE_DURATION = sum(phase["duration"] for phase in PRELUDE_PHASES)
 RAIL_WEIGHTS = (2.0, 1.0, 6.0)
+PRELUDE_TITLE = "inhale twice"
 
 
 def clamp(value, lo=0.0, hi=1.0):
@@ -203,7 +204,7 @@ def distribute_width(total, weights):
 
 
 def rail_width(columns):
-    return max(12, min(48, columns - 12))
+    return max(18, min(52, columns - 14))
 
 
 def build_live_layout(columns, lines):
@@ -239,23 +240,24 @@ def build_live_layout(columns, lines):
         "grid_h": grid_h,
         "left": left,
         "dots_y": top,
-        "phase_words_y": top + 1,
-        "phase_rail_y": top + 2,
+        "cue_y": top + 2,
+        "phase_rail_y": top + 3,
         "orb_y": top + 4,
-        "label_y": top + grid_h + 5,
+        "timer_y": top + grid_h + 5,
         "rail_width": rail_width(columns),
         "distances": distances,
     }
 
 
 def build_prelude_layout(columns, lines):
-    top = max(0, (lines - 5) // 2)
+    top = max(0, (lines - 6) // 2)
     return {
         "columns": columns,
         "lines": lines,
-        "headline_y": top,
-        "rail_y": top + 2,
-        "caption_y": top + 4,
+        "title_y": top,
+        "subtitle_y": top + 2,
+        "rail_y": top + 3,
+        "caption_y": top + 5,
         "rail_width": rail_width(columns),
     }
 
@@ -361,27 +363,39 @@ def render_orb_row(distances, radius, center_hsv, edge_hsv, rim_boost, truecolor
     return "".join(parts)
 
 
-def render_phase_words_line(columns, active_index, truecolor):
+def render_phase_copy_line(columns, active_index, truecolor):
     labels = [phase["label"] for phase in LIVE_PHASES]
-    separator = "  " if columns >= 34 else " "
+    separator = " · "
     visible_width = sum(len(label) for label in labels) + len(separator) * (len(labels) - 1)
     left = max(0, (columns - visible_width) // 2)
-    separator_rgb = (100, 108, 116) if truecolor else (120, 120, 120)
+    separator_rgb = (88, 96, 104) if truecolor else (120, 120, 120)
 
     parts = [" " * left]
     for index, phase in enumerate(LIVE_PHASES):
         if index > 0:
             parts.append(style_text(separator, separator_rgb, truecolor))
         if index < active_index:
-            rgb = scale_rgb(phase_accent_rgb(phase["key"], 0.08), 0.88)
+            rgb = scale_rgb(phase_accent_rgb(phase["key"], 0.05), 0.82)
             parts.append(style_text(phase["label"], rgb, truecolor))
         elif index == active_index:
-            rgb = phase_accent_rgb(phase["key"], 0.30)
+            rgb = phase_accent_rgb(phase["key"], 0.26)
             parts.append(style_text(phase["label"], rgb, truecolor, bold=True))
         else:
-            rgb = (120, 128, 136) if truecolor else (135, 135, 135)
+            rgb = (112, 120, 128) if truecolor else (135, 135, 135)
             parts.append(style_text(phase["label"], rgb, truecolor))
     return "".join(parts)
+
+
+def render_live_cue_line(columns, phase_key, label, truecolor):
+    left = max(0, (columns - len(label)) // 2)
+    return (" " * left) + style_text(label, phase_accent_rgb(phase_key, 0.24), truecolor, bold=True)
+
+
+def render_timer_line(columns, remaining, truecolor):
+    timer = f"{remaining}s remaining"
+    left = max(0, (columns - len(timer)) // 2)
+    rgb = (124, 132, 140) if truecolor else (138, 138, 138)
+    return (" " * left) + style_text(timer, rgb, truecolor)
 
 
 def render_phase_rail(columns, rail_width_chars, active_index, active_progress, truecolor):
@@ -427,10 +441,13 @@ def render_dots(elapsed, center_hsv, truecolor):
 
 def render_prelude_frame(layout, elapsed, truecolor):
     active_index, phase, _, phase_progress = phase_for_elapsed(elapsed, PRELUDE_PHASES)
+    title_rgb = phase_accent_rgb(phase["key"], 0.18)
     caption_rgb = (118, 126, 134) if truecolor else (138, 138, 138)
     screen = [""] * layout["lines"]
 
-    screen[layout["headline_y"]] = render_phase_words_line(layout["columns"], active_index, truecolor)
+    title_left = max(0, (layout["columns"] - len(PRELUDE_TITLE)) // 2)
+    screen[layout["title_y"]] = (" " * title_left) + style_text(PRELUDE_TITLE, title_rgb, truecolor, bold=True)
+    screen[layout["subtitle_y"]] = render_phase_copy_line(layout["columns"], active_index, truecolor)
     screen[layout["rail_y"]] = render_phase_rail(
         layout["columns"],
         layout["rail_width"],
@@ -461,9 +478,10 @@ def render_live_frame(layout, elapsed, truecolor):
     dots_width = DOT_COUNT * 2 - 1
     dots_x = max(0, (layout["columns"] - dots_width) // 2)
     screen[layout["dots_y"]] = (" " * dots_x) + dots_text
-    screen[layout["phase_words_y"]] = render_phase_words_line(
+    screen[layout["cue_y"]] = render_live_cue_line(
         layout["columns"],
-        phase_info["phase_index"],
+        phase_info["phase_key"],
+        phase_info["phase_label"],
         truecolor,
     )
     screen[layout["phase_rail_y"]] = render_phase_rail(
@@ -487,20 +505,8 @@ def render_live_frame(layout, elapsed, truecolor):
             )
             screen[y] = (" " * layout["left"]) + orb_row
 
-    label = phase_info["phase_label"]
-    timer = f"{remaining:>2}s"
-    label_x = max(0, (layout["columns"] - len(label)) // 2)
-    timer_x = max(label_x + len(label) + 2, layout["columns"] - len(timer) - 2)
-    label_line = (" " * label_x) + style_text(
-        label,
-        phase_accent_rgb(phase_info["phase_key"], 0.24),
-        truecolor,
-        bold=True,
-    )
-    label_line += " " * max(1, timer_x - label_x - len(label))
-    label_line += style_text(timer, scale_rgb(phase_accent_rgb(phase_info["phase_key"], 0.12), 0.92), truecolor)
-    if 0 <= layout["label_y"] < layout["lines"]:
-        screen[layout["label_y"]] = label_line
+    if 0 <= layout["timer_y"] < layout["lines"]:
+        screen[layout["timer_y"]] = render_timer_line(layout["columns"], remaining, truecolor)
 
     parts = ["\033[H"]
     for idx, line in enumerate(screen):
