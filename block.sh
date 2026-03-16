@@ -3,6 +3,16 @@
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SITES_FILE="$SCRIPT_DIR/sites.txt"
+REBLOCK_PID_FILE="/tmp/terminally-distracted-reblock.pid"
+
+# Manual blocking ends any active unblock window.
+if [ -f "$REBLOCK_PID_FILE" ]; then
+  read -r OLD_PID _ < "$REBLOCK_PID_FILE"
+  if [ -n "$OLD_PID" ]; then
+    kill "$OLD_PID" 2>/dev/null
+  fi
+  rm -f "$REBLOCK_PID_FILE"
+fi
 
 # Skip weekends (6=Saturday, 7=Sunday)
 DAY=$(date +%u)
