@@ -15,10 +15,11 @@ python3 << 'BREATHE_EOF'
 import sys, math, time, select, termios, tty
 
 DURATION = 90
-INHALE = 6.0
-HOLD = 7.0
-EXHALE = 8.0
-CYCLE = INHALE + HOLD + EXHALE
+# Physiological sigh: double inhale (nose) + long exhale (mouth)
+INHALE_1 = 2.0   # deep inhale
+INHALE_2 = 1.0   # short top-up inhale
+EXHALE   = 6.0   # long slow exhale
+CYCLE = INHALE_1 + INHALE_2 + EXHALE
 BAR_MAX = 48
 FPS = 30
 
@@ -47,7 +48,7 @@ def main():
         w = sys.stdout.write
         f = sys.stdout.flush
         w("\033[?25l")  # hide cursor
-        w("\n  6 in \u00b7 7 hold \u00b7 8 out\n\n\n")
+        w("\n  physiological sigh \u2014 double inhale, long exhale\n\n\n")
         f()
         start = time.monotonic()
         frame = 0
@@ -61,22 +62,26 @@ def main():
                 cancelled = True
                 break
             ct = elapsed % CYCLE
-            if ct < INHALE:
-                phase = "breathe in"
-                phase_dur = INHALE
+            if ct < INHALE_1:
+                phase = "inhale"
+                phase_dur = INHALE_1
                 phase_elapsed = ct
-                pt = ct / INHALE
-                progress = (1 - math.cos(pt * math.pi)) / 2
-            elif ct < INHALE + HOLD:
-                phase = "hold"
-                phase_dur = HOLD
-                phase_elapsed = ct - INHALE
-                progress = 1.0
+                pt = ct / INHALE_1
+                # Expand from 0 to ~0.7
+                progress = (1 - math.cos(pt * math.pi)) / 2 * 0.7
+            elif ct < INHALE_1 + INHALE_2:
+                phase = "inhale +"
+                phase_dur = INHALE_2
+                phase_elapsed = ct - INHALE_1
+                pt = phase_elapsed / INHALE_2
+                # Quick top-up from 0.7 to 1.0
+                progress = 0.7 + (1 - math.cos(pt * math.pi)) / 2 * 0.3
             else:
-                phase = "breathe out"
+                phase = "exhale"
                 phase_dur = EXHALE
-                phase_elapsed = ct - INHALE - HOLD
+                phase_elapsed = ct - INHALE_1 - INHALE_2
                 pt = phase_elapsed / EXHALE
+                # Long slow release from 1.0 to 0
                 progress = (1 + math.cos(pt * math.pi)) / 2
             bar_w = progress * BAR_MAX
             bar = render_bar(bar_w)
