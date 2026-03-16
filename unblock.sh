@@ -2,7 +2,7 @@
 # Breathing exercise → confirm → unblock sites for 10 minutes
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-REBLOCK_PID_FILE="/tmp/focusblock-reblock.pid"
+REBLOCK_PID_FILE="/tmp/terminally-distracted-reblock.pid"
 
 # Kill any existing reblock timer from a previous unblock
 if [ -f "$REBLOCK_PID_FILE" ]; then
@@ -114,8 +114,8 @@ if [ $? -ne 0 ]; then
   exit 0
 fi
 
-# Remove focusblock entries from /etc/hosts
-sed -i "" '/# BEGIN focusblock/,/# END focusblock/d' /etc/hosts
+# Remove terminally-distracted entries from /etc/hosts
+sed -i "" '/# BEGIN terminally-distracted/,/# END terminally-distracted/d' /etc/hosts
 
 # Remove blank lines left behind (collapse multiple empty lines to one)
 sed -i "" '/^$/N;/^\n$/d' /etc/hosts

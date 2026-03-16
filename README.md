@@ -1,4 +1,4 @@
-# focusblock
+# terminally-distracted
 
 Block social media on macOS using `/etc/hosts` + the `pf` firewall. Unblocking requires a 90-second breathing exercise and confirmation.
 
@@ -7,11 +7,15 @@ Block social media on macOS using `/etc/hosts` + the `pf` firewall. Unblocking r
 - macOS
 - `sudo` access
 
-## Install
+## Quick start (Claude Code)
+
+Clone the repo, open [Claude Code](https://claude.com/claude-code), and say **"set this up"**. Claude will run the installer and walk you through configuration.
+
+## Install (manual)
 
 ```bash
-git clone https://github.com/yourusername/focusblock.git
-cd focusblock
+git clone https://github.com/maxxthedeveloper/terminally-distracted.git
+cd terminally-distracted
 ./install.sh
 ```
 
@@ -32,15 +36,15 @@ Unblocking gives you 10 minutes, then sites are automatically re-blocked.
 
 ## How it works
 
-1. Adds `0.0.0.0` entries to `/etc/hosts` between `# BEGIN focusblock` / `# END focusblock` markers
+1. Adds `0.0.0.0` entries to `/etc/hosts` between `# BEGIN terminally-distracted` / `# END terminally-distracted` markers
 2. Resolves domain IPs via `dig` and creates `pf` firewall rules (catches DNS-over-HTTPS)
 3. Flushes DNS cache
 
 ## Uninstall
 
 ```bash
-launchctl unload ~/Library/LaunchAgents/com.focusblock.plist
-rm ~/Library/LaunchAgents/com.focusblock.plist
-sudo sed -i "" '/# BEGIN focusblock/,/# END focusblock/d' /etc/hosts
+launchctl unload ~/Library/LaunchAgents/com.terminally-distracted.plist
+rm ~/Library/LaunchAgents/com.terminally-distracted.plist
+sudo sed -i "" '/# BEGIN terminally-distracted/,/# END terminally-distracted/d' /etc/hosts
 sudo sed -i "" '/social-block/d' /etc/pf.conf
 ```

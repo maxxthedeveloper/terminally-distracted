@@ -1,9 +1,9 @@
 #!/bin/bash
-# Install focusblock LaunchAgent
+# Install terminally-distracted LaunchAgent
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PLIST_SRC="$SCRIPT_DIR/com.focusblock.plist"
-PLIST_DEST="$HOME/Library/LaunchAgents/com.focusblock.plist"
+PLIST_SRC="$SCRIPT_DIR/com.terminally-distracted.plist"
+PLIST_DEST="$HOME/Library/LaunchAgents/com.terminally-distracted.plist"
 
 # Make scripts executable
 chmod +x "$SCRIPT_DIR/block.sh" "$SCRIPT_DIR/unblock.sh"

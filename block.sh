@@ -31,16 +31,16 @@ fi
 
 # --- /etc/hosts ---
 
-# Remove old focusblock entries if present
-sed -i "" '/# BEGIN focusblock/,/# END focusblock/d' /etc/hosts
+# Remove old terminally-distracted entries if present
+sed -i "" '/# BEGIN terminally-distracted/,/# END terminally-distracted/d' /etc/hosts
 
 # Build hosts block
-HOSTS_BLOCK="# BEGIN focusblock"
+HOSTS_BLOCK="# BEGIN terminally-distracted"
 for domain in "${DOMAINS[@]}"; do
   HOSTS_BLOCK+=$'\n'"0.0.0.0 $domain"
   HOSTS_BLOCK+=$'\n'"0.0.0.0 www.$domain"
 done
-HOSTS_BLOCK+=$'\n'"# END focusblock"
+HOSTS_BLOCK+=$'\n'"# END terminally-distracted"
 
 echo "$HOSTS_BLOCK" >> /etc/hosts
 
@@ -53,7 +53,7 @@ killall -HUP mDNSResponder
 ALL_IPS=$(dig +short "${DOMAINS[@]}" | grep -E '^[0-9]')
 PF_RULES="/etc/pf.anchors/social-block"
 
-echo "# focusblock IP rules" > "$PF_RULES"
+echo "# terminally-distracted IP rules" > "$PF_RULES"
 for ip in $ALL_IPS; do
   echo "block drop quick on en0 proto {tcp udp} to $ip" >> "$PF_RULES"
 done
