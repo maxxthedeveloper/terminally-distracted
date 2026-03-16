@@ -12,105 +12,320 @@ if [ -f "$REBLOCK_PID_FILE" ]; then
 fi
 
 python3 << 'BREATHE_EOF'
-import sys, math, time, select, termios, tty
+import colorsys
+import math
+import os
+import select
+import sys
+import termios
+import time
+import tty
+from functools import lru_cache
 
-DURATION = 90
-# Physiological sigh: double inhale (nose) + long exhale (mouth)
-INHALE_1 = 2.0   # deep inhale
-INHALE_2 = 1.0   # short top-up inhale
-EXHALE   = 6.0   # long slow exhale
+DURATION = 90.0
+INHALE_1 = 2.0
+INHALE_2 = 1.0
+EXHALE = 6.0
 CYCLE = INHALE_1 + INHALE_2 + EXHALE
-BAR_MAX = 48
 FPS = 30
+DOT_COUNT = 9
+GRID_W = 32
+GRID_H = 16
+ASPECT_X = 0.45
+MIN_RADIUS = 0.25
+MID_RADIUS = 0.70
+HALO_SCALE = 1.18
 
-BLOCKS = " \u258f\u258e\u258d\u258c\u258b\u258a\u2589\u2588"
+INHALE_CENTER_HSV = (0.50, 0.36, 0.98)
+INHALE_EDGE_HSV = (0.45, 0.58, 0.78)
+EXHALE_CENTER_HSV = (0.78, 0.18, 0.95)
+EXHALE_EDGE_HSV = (0.10, 0.46, 0.86)
 
-def render_bar(width_float):
-    if width_float <= 0:
-        return ""
-    full = int(width_float)
-    frac = width_float - full
-    frac_idx = int(frac * 8)
+
+def clamp(value, lo=0.0, hi=1.0):
+    return max(lo, min(hi, value))
+
+
+def ease_sine(value):
+    return (1.0 - math.cos(math.pi * clamp(value))) / 2.0
+
+
+def smoothstep(value):
+    value = clamp(value)
+    return value * value * (3.0 - 2.0 * value)
+
+
+def lerp(a, b, t):
+    return a + (b - a) * t
+
+
+def lerp_triplet(a, b, t):
+    return tuple(lerp(x, y, t) for x, y in zip(a, b))
+
+
+def scale_rgb(rgb, factor):
+    return tuple(max(0, min(255, int(round(channel * factor)))) for channel in rgb)
+
+
+def mix_rgb(rgb_a, rgb_b, t):
+    return tuple(
+        max(0, min(255, int(round(lerp(a, b, t)))))
+        for a, b in zip(rgb_a, rgb_b)
+    )
+
+
+def hsv_to_rgb_bytes(hsv):
+    r, g, b = colorsys.hsv_to_rgb(*hsv)
+    return (int(round(r * 255)), int(round(g * 255)), int(round(b * 255)))
+
+
+def supports_truecolor():
+    term_program = os.environ.get("TERM_PROGRAM", "")
+    colorterm = os.environ.get("COLORTERM", "").lower()
+    term = os.environ.get("TERM", "").lower()
+    if term_program == "Apple_Terminal":
+        return False
+    return (
+        "truecolor" in colorterm
+        or "24bit" in colorterm
+        or term.endswith("-direct")
+        or "direct" in term
+    )
+
+
+@lru_cache(maxsize=None)
+def rgb_to_256(r, g, b):
+    if r == g == b:
+        if r < 8:
+            return 16
+        if r > 248:
+            return 231
+        return round(((r - 8) / 247) * 24) + 232
+
+    r_idx = round(r / 255 * 5)
+    g_idx = round(g / 255 * 5)
+    b_idx = round(b / 255 * 5)
+    return 16 + 36 * r_idx + 6 * g_idx + b_idx
+
+
+@lru_cache(maxsize=None)
+def fg_escape(truecolor, r, g, b):
+    if truecolor:
+        return f"\033[38;2;{r};{g};{b}m"
+    return f"\033[38;5;{rgb_to_256(r, g, b)}m"
+
+
+def build_layout(columns, lines):
+    usable_cols = max(8, columns - 4)
+    usable_lines = max(4, lines - 4)
+    scale = min(usable_cols / GRID_W, usable_lines / GRID_H, 1.0)
+    grid_w = max(8, min(usable_cols, int(GRID_W * scale)))
+    grid_h = max(4, min(usable_lines, int(GRID_H * scale)))
+
+    total_h = grid_h + 4
+    top = max(0, (lines - total_h) // 2)
+    left = max(0, (columns - grid_w) // 2)
+
+    cx = (grid_w - 1) / 2.0
+    cy = (grid_h - 1) / 2.0
+    x_norm = max(1.0, cx * ASPECT_X)
+    y_norm = max(1.0, cy)
+
+    distances = []
+    for y in range(grid_h):
+        row = []
+        for x in range(grid_w):
+            dx = ((x - cx) * ASPECT_X) / x_norm
+            dy = (y - cy) / y_norm
+            row.append(math.hypot(dx, dy))
+        distances.append(row)
+
+    return {
+        "columns": columns,
+        "lines": lines,
+        "grid_w": grid_w,
+        "grid_h": grid_h,
+        "left": left,
+        "dots_y": top,
+        "orb_y": top + 2,
+        "label_y": top + grid_h + 3,
+        "distances": distances,
+    }
+
+
+def phase_state(cycle_time):
+    inhale_total = INHALE_1 + INHALE_2
+    if cycle_time < INHALE_1:
+        progress = MIN_RADIUS + (MID_RADIUS - MIN_RADIUS) * ease_sine(cycle_time / INHALE_1)
+        return progress, "breathe in"
+    if cycle_time < inhale_total:
+        top_up = cycle_time - INHALE_1
+        progress = MID_RADIUS + (1.0 - MID_RADIUS) * ease_sine(top_up / INHALE_2)
+        return progress, "breathe in"
+    release = cycle_time - inhale_total
+    progress = MIN_RADIUS + (1.0 - MIN_RADIUS) * (1.0 - ease_sine(release / EXHALE))
+    return progress, "breathe out"
+
+
+def phase_palette(cycle_time):
+    inhale_total = INHALE_1 + INHALE_2
+    if cycle_time < inhale_total:
+        blend = 1.0 - ease_sine(cycle_time / inhale_total)
+    else:
+        blend = ease_sine((cycle_time - inhale_total) / EXHALE)
+    center_hsv = lerp_triplet(INHALE_CENTER_HSV, EXHALE_CENTER_HSV, blend)
+    edge_hsv = lerp_triplet(INHALE_EDGE_HSV, EXHALE_EDGE_HSV, blend)
+    return center_hsv, edge_hsv
+
+
+def intensity_for(distance, radius):
+    if distance <= radius:
+        t = distance / max(radius, 1e-6)
+        return 0.18 + 0.82 * (1.0 - smoothstep(t))
+    halo = radius * HALO_SCALE + 0.04
+    if distance <= halo:
+        t = (distance - radius) / max(halo - radius, 1e-6)
+        return 0.16 * (1.0 - smoothstep(t))
+    return 0.0
+
+
+def render_orb_row(distances, radius, center_hsv, edge_hsv, truecolor):
     parts = []
-    for i in range(full):
+    current_escape = None
+    radius_denom = max(radius, 1e-6)
+
+    for distance in distances:
+        intensity = intensity_for(distance, radius)
+        if intensity < 0.045:
+            if current_escape is not None:
+                parts.append("\033[0m")
+                current_escape = None
+            parts.append(" ")
+            continue
+
+        color_t = clamp(distance / radius_denom)
+        hsv = lerp_triplet(center_hsv, edge_hsv, color_t)
+        rgb = hsv_to_rgb_bytes(hsv)
+        center_boost = 1.0 - smoothstep(min(1.0, distance / radius_denom))
+        rgb = mix_rgb(rgb, (255, 255, 255), 0.30 * center_boost)
+        rgb = scale_rgb(rgb, 0.12 + 0.88 * intensity)
+        escape = fg_escape(truecolor, *rgb)
+
+        if escape != current_escape:
+            parts.append(escape)
+            current_escape = escape
         parts.append("\u2588")
-    if frac_idx > 0 and full < BAR_MAX:
-        parts.append(BLOCKS[frac_idx])
+
+    if current_escape is not None:
+        parts.append("\033[0m")
     return "".join(parts)
+
+
+def render_dots(elapsed, center_hsv, truecolor):
+    filled = min(DOT_COUNT, int(elapsed / (DURATION / DOT_COUNT)))
+    accent = mix_rgb(hsv_to_rgb_bytes(center_hsv), (255, 255, 255), 0.20)
+    filled_dot = f"{fg_escape(truecolor, *accent)}\u25cf\033[0m"
+    empty_rgb = (112, 120, 128) if truecolor else (135, 135, 135)
+    empty_dot = f"{fg_escape(truecolor, *empty_rgb)}\u25cb\033[0m"
+    return " ".join(filled_dot if idx < filled else empty_dot for idx in range(DOT_COUNT))
+
+
+def render_frame(layout, elapsed, truecolor):
+    cycle_time = elapsed % CYCLE
+    radius, phase_label = phase_state(cycle_time)
+    center_hsv, edge_hsv = phase_palette(cycle_time)
+    remaining = max(0, int(math.ceil(DURATION - elapsed)))
+
+    screen = [""] * layout["lines"]
+
+    dots_text = render_dots(elapsed, center_hsv, truecolor)
+    dots_width = DOT_COUNT * 2 - 1
+    dots_x = max(0, (layout["columns"] - dots_width) // 2)
+    screen[layout["dots_y"]] = (" " * dots_x) + dots_text
+
+    for row_index, distances in enumerate(layout["distances"]):
+        y = layout["orb_y"] + row_index
+        if 0 <= y < layout["lines"]:
+            orb_row = render_orb_row(distances, radius, center_hsv, edge_hsv, truecolor)
+            screen[y] = (" " * layout["left"]) + orb_row
+
+    label = phase_label
+    timer = f"{remaining:>2}s"
+    label_x = max(0, (layout["columns"] - len(label)) // 2)
+    timer_x = max(label_x + len(label) + 2, layout["columns"] - len(timer) - 2)
+    label_line = (" " * label_x) + label
+    label_line += " " * max(1, timer_x - label_x - len(label))
+    label_line += timer
+    if 0 <= layout["label_y"] < layout["lines"]:
+        screen[layout["label_y"]] = label_line
+
+    parts = ["\033[H"]
+    for idx, line in enumerate(screen):
+        parts.append(line)
+        parts.append("\033[0m\033[K")
+        if idx < layout["lines"] - 1:
+            parts.append("\n")
+    return "".join(parts)
+
 
 def main():
     tty_f = open("/dev/tty", "r+b", buffering=0)
     fd = tty_f.fileno()
     old = termios.tcgetattr(fd)
     cancelled = False
+    truecolor = supports_truecolor()
+    layout = None
+    last_size = None
+
     try:
         tty.setcbreak(fd)
-        w = sys.stdout.write
-        f = sys.stdout.flush
-        w("\033[?25l")  # hide cursor
-        w("\n  physiological sigh \u2014 double inhale, long exhale\n\n\n")
-        f()
+        sys.stdout.write("\033[?1049h\033[?25l\033[2J\033[H")
+        sys.stdout.flush()
+
         start = time.monotonic()
         frame = 0
+
         while True:
             now = time.monotonic()
             elapsed = now - start
             if elapsed >= DURATION:
                 break
-            if select.select([tty_f], [], [], 0)[0]:
-                tty_f.read(1)
+
+            if select.select([fd], [], [], 0)[0]:
+                os.read(fd, 1)
                 cancelled = True
                 break
-            ct = elapsed % CYCLE
-            if ct < INHALE_1:
-                phase = "inhale"
-                phase_dur = INHALE_1
-                phase_elapsed = ct
-                pt = ct / INHALE_1
-                # Expand from 0 to ~0.7
-                progress = (1 - math.cos(pt * math.pi)) / 2 * 0.7
-            elif ct < INHALE_1 + INHALE_2:
-                phase = "inhale +"
-                phase_dur = INHALE_2
-                phase_elapsed = ct - INHALE_1
-                pt = phase_elapsed / INHALE_2
-                # Quick top-up from 0.7 to 1.0
-                progress = 0.7 + (1 - math.cos(pt * math.pi)) / 2 * 0.3
-            else:
-                phase = "exhale"
-                phase_dur = EXHALE
-                phase_elapsed = ct - INHALE_1 - INHALE_2
-                pt = phase_elapsed / EXHALE
-                # Long slow release from 1.0 to 0
-                progress = (1 + math.cos(pt * math.pi)) / 2
-            bar_w = progress * BAR_MAX
-            bar = render_bar(bar_w)
-            remaining = int(DURATION - elapsed)
-            phase_remaining = math.ceil(phase_dur - phase_elapsed)
-            label = f"{phase}   {phase_remaining}s"
-            w(f"\r\033[2A\033[K  {label}\033[{50}G{remaining:>3}s\n\033[K\n\033[K  {bar}\r")
-            f()
+
+            try:
+                size = os.get_terminal_size(fd)
+            except OSError:
+                size = os.terminal_size((80, 24))
+
+            if size != last_size:
+                layout = build_layout(size.columns, size.lines)
+                last_size = size
+
+            sys.stdout.write(render_frame(layout, elapsed, truecolor))
+            sys.stdout.flush()
+
             frame += 1
             target = start + frame / FPS
-            sl = target - time.monotonic()
-            if sl > 0:
-                time.sleep(sl)
-        w("\r\033[2A\033[K\n\033[K\n\033[K\r")
-        w("\033[?25h")
-        f()
-        if cancelled:
-            w("\n  Cancelled. Sites remain blocked.\n")
-            f()
+            sleep_for = target - time.monotonic()
+            if sleep_for > 0:
+                time.sleep(sleep_for)
     except (KeyboardInterrupt, SystemExit):
         cancelled = True
-        sys.stdout.write("\033[?25h\n\n  Cancelled. Sites remain blocked.\n")
-        sys.stdout.flush()
     finally:
         termios.tcsetattr(fd, termios.TCSADRAIN, old)
         tty_f.close()
-        sys.stdout.write("\033[?25h")
+        sys.stdout.write("\033[0m\033[?25h\033[?1049l")
+        sys.stdout.flush()
+
+    if cancelled:
+        sys.stdout.write("\n  Cancelled. Sites remain blocked.\n")
         sys.stdout.flush()
     sys.exit(1 if cancelled else 0)
+
 
 main()
 BREATHE_EOF
