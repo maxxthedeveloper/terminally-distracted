@@ -114,6 +114,9 @@ if [ $? -ne 0 ]; then
   exit 0
 fi
 
+# Backup hosts file before modifying
+cp /etc/hosts /etc/hosts.bak
+
 # Remove terminally-distracted entries from /etc/hosts
 sed -i "" '/# BEGIN terminally-distracted/,/# END terminally-distracted/d' /etc/hosts
 

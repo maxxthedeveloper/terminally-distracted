@@ -4,13 +4,13 @@ Block social media on macOS using `/etc/hosts` + the `pf` firewall. Unblocking r
 
 ## Setup
 
-Run the installer (no sudo needed):
+Run the installer (will prompt for sudo):
 
 ```bash
 ./install.sh
 ```
 
-This installs a LaunchAgent that auto-blocks sites at 9 AM on weekdays.
+This installs a LaunchDaemon that auto-blocks sites as root at 9 AM on weekdays.
 
 ## Configuration
 
@@ -34,8 +34,8 @@ Both scripts require `sudo`.
 ## Uninstall
 
 ```bash
-launchctl unload ~/Library/LaunchAgents/com.terminally-distracted.plist
-rm ~/Library/LaunchAgents/com.terminally-distracted.plist
+sudo launchctl unload /Library/LaunchDaemons/com.terminally-distracted.plist
+sudo rm /Library/LaunchDaemons/com.terminally-distracted.plist
 sudo sed -i "" '/# BEGIN terminally-distracted/,/# END terminally-distracted/d' /etc/hosts
 sudo sed -i "" '/social-block/d' /etc/pf.conf
 ```

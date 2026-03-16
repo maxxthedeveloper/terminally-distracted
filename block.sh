@@ -21,6 +21,11 @@ while IFS= read -r line; do
   line="${line%%#*}"        # strip inline comments
   line="${line// /}"        # strip spaces
   [ -z "$line" ] && continue
+  # Validate domain format (alphanumeric, dots, hyphens only)
+  if [[ ! "$line" =~ ^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$ ]]; then
+    echo "Invalid domain, skipping: $line" >&2
+    continue
+  fi
   DOMAINS+=("$line")
 done < "$SITES_FILE"
 
@@ -30,6 +35,9 @@ if [ ${#DOMAINS[@]} -eq 0 ]; then
 fi
 
 # --- /etc/hosts ---
+
+# Backup hosts file before modifying
+cp /etc/hosts /etc/hosts.bak
 
 # Remove old terminally-distracted entries if present
 sed -i "" '/# BEGIN terminally-distracted/,/# END terminally-distracted/d' /etc/hosts
@@ -55,7 +63,7 @@ PF_RULES="/etc/pf.anchors/social-block"
 
 echo "# terminally-distracted IP rules" > "$PF_RULES"
 for ip in $ALL_IPS; do
-  echo "block drop quick on en0 proto {tcp udp} to $ip" >> "$PF_RULES"
+  echo "block drop quick proto {tcp udp} to $ip" >> "$PF_RULES"
 done
 
 if ! grep -q "social-block" /etc/pf.conf; then

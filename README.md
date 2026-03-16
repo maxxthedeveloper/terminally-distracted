@@ -19,7 +19,7 @@ cd terminally-distracted
 ./install.sh
 ```
 
-This installs a LaunchAgent that runs `block.sh` at 9:00 AM on weekdays.
+This installs a LaunchDaemon that runs `block.sh` as root at 9:00 AM on weekdays. The installer will prompt for sudo.
 
 ## Configure
 
@@ -43,8 +43,8 @@ Unblocking gives you 10 minutes, then sites are automatically re-blocked.
 ## Uninstall
 
 ```bash
-launchctl unload ~/Library/LaunchAgents/com.terminally-distracted.plist
-rm ~/Library/LaunchAgents/com.terminally-distracted.plist
+sudo launchctl unload /Library/LaunchDaemons/com.terminally-distracted.plist
+sudo rm /Library/LaunchDaemons/com.terminally-distracted.plist
 sudo sed -i "" '/# BEGIN terminally-distracted/,/# END terminally-distracted/d' /etc/hosts
 sudo sed -i "" '/social-block/d' /etc/pf.conf
 ```
