@@ -1,0 +1,13 @@
+# Domains to block — one per line
+# Subdomains (www., api., etc.) are added automatically
+
+# X / Twitter
+x.com
+twitter.com
+twimg.com
+t.co
+tweetdeck.twitter.com
+
+# Instagram
+instagram.com
+cdninstagram.com
