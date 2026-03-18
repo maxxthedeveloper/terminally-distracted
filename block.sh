@@ -14,10 +14,15 @@ if [ -f "$REBLOCK_PID_FILE" ]; then
   rm -f "$REBLOCK_PID_FILE"
 fi
 
-# Skip weekends (6=Saturday, 7=Sunday)
+# Skip weekends (6=Saturday, 7=Sunday) — unless nuked
+NUKE_LOCK="/var/tmp/terminally-distracted-nuke.lock"
 DAY=$(date +%u)
 if [ "$DAY" -ge 6 ]; then
-  exit 0
+  if [ -f "$NUKE_LOCK" ] && [ "$(date +%s)" -lt "$(cat "$NUKE_LOCK")" ]; then
+    : # nuke active — block even on weekends
+  else
+    exit 0
+  fi
 fi
 
 if [ ! -f "$SITES_FILE" ]; then

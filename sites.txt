@@ -11,3 +11,21 @@ tweetdeck.twitter.com
 # Instagram
 instagram.com
 cdninstagram.com
+
+# YouTube
+youtube.com
+googlevideo.com
+ytimg.com
+yt.be
+youtube-nocookie.com
+
+# Discord
+discord.com
+discordapp.com
+discord.gg
+discordcdn.com
+discordapp.net
+discord.media
+discord.dev
+discord.gift
+dis.gd

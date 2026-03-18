@@ -4,6 +4,20 @@
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REBLOCK_PID_FILE="/tmp/terminally-distracted-reblock.pid"
 
+# Refuse if nuked
+NUKE_LOCK="/var/tmp/terminally-distracted-nuke.lock"
+if [ -f "$NUKE_LOCK" ]; then
+  EXPIRY=$(cat "$NUKE_LOCK")
+  NOW=$(date +%s)
+  if [ "$NOW" -lt "$EXPIRY" ]; then
+    HOURS=$(( (EXPIRY - NOW) / 3600 ))
+    MINS=$(( ((EXPIRY - NOW) % 3600) / 60 ))
+    echo "NUKE ACTIVE. ${HOURS}h ${MINS}m remaining. No exceptions."
+    exit 1
+  fi
+  rm -f "$NUKE_LOCK"
+fi
+
 if [ -f "$REBLOCK_PID_FILE" ]; then
   read -r OLD_PID OLD_UNTIL < "$REBLOCK_PID_FILE"
   if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
