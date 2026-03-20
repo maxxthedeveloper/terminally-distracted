@@ -10,6 +10,12 @@ DURATION=86400
 # --enforce mode: called by the LaunchDaemon every 60s
 if [ "$1" = "--enforce" ]; then
   if [ -f "$NUKE_LOCK" ] && [ "$(date +%s)" -lt "$(cat "$NUKE_LOCK")" ]; then
+    # Kill any active unblock window so block.sh doesn't skip
+    if [ -f "$REBLOCK_PID_FILE" ]; then
+      read -r OLD_PID _ < "$REBLOCK_PID_FILE"
+      [ -n "$OLD_PID" ] && kill "$OLD_PID" 2>/dev/null
+      rm -f "$REBLOCK_PID_FILE"
+    fi
     bash "$SCRIPT_DIR/block.sh" >/dev/null 2>&1
     exit 0
   fi
@@ -749,7 +755,7 @@ def main():
                 # Subtitles
                 sub1 = "YOUR DISTRACTIONS HAVE BEEN ELIMINATED."
                 sub2 = "All social media blocked for 24 hours."
-                sub3 = "No breathing exercise will save you."
+                sub3 = "Brainrot vanished."
 
                 fade1 = clamp((t - T_SUB) / 0.6)
                 fade2 = clamp((t - T_SUB - 0.3) / 0.6)
@@ -836,7 +842,7 @@ fi
 printf '\033[1;31m'
 echo "  ================================================"
 echo "     NUKED. All social media blocked for 24 hours."
-echo "     No breathing exercise will save you."
+echo "     Brainrot vanished."
 echo "  ================================================"
 printf '\033[0m\n'
 echo "  Expires at $EXPIRY_TIME tomorrow."

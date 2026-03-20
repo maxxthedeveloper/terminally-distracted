@@ -1,15 +1,16 @@
 #!/bin/bash
-# Block social media sites via /etc/hosts + pf firewall
+# Block social media sites via /etc/hosts
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SITES_FILE="$SCRIPT_DIR/sites.txt"
 REBLOCK_PID_FILE="/tmp/terminally-distracted-reblock.pid"
 
-# Manual blocking ends any active unblock window.
+# If an unblock window is active (reblock timer alive), don't re-block
 if [ -f "$REBLOCK_PID_FILE" ]; then
   read -r OLD_PID _ < "$REBLOCK_PID_FILE"
-  if [ -n "$OLD_PID" ]; then
-    kill "$OLD_PID" 2>/dev/null
+  if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
+    echo "Skipping: unblock window active." >&2
+    exit 0
   fi
   rm -f "$REBLOCK_PID_FILE"
 fi
@@ -71,22 +72,4 @@ echo "$HOSTS_BLOCK" >> /etc/hosts
 dscacheutil -flushcache
 killall -HUP mDNSResponder
 
-# --- pf firewall (catches DNS-over-HTTPS) ---
-
-ALL_IPS=$(dig +short "${DOMAINS[@]}" | grep -E '^[0-9]')
-PF_RULES="/etc/pf.anchors/social-block"
-
-echo "# terminally-distracted IP rules" > "$PF_RULES"
-for ip in $ALL_IPS; do
-  echo "block drop quick proto {tcp udp} to $ip" >> "$PF_RULES"
-done
-
-if ! grep -q "social-block" /etc/pf.conf; then
-  echo 'anchor "social-block"' >> /etc/pf.conf
-  echo 'load anchor "social-block" from "/etc/pf.anchors/social-block"' >> /etc/pf.conf
-fi
-
-pfctl -f /etc/pf.conf 2>/dev/null
-pfctl -e 2>/dev/null
-
-echo "Done. ${#DOMAINS[@]} domains blocked via hosts + firewall."
+echo "Done. ${#DOMAINS[@]} domains blocked via /etc/hosts."

@@ -3,10 +3,20 @@
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REBLOCK_PID_FILE="/tmp/terminally-distracted-reblock.pid"
-
-# Refuse if nuked
 NUKE_LOCK="/var/tmp/terminally-distracted-nuke.lock"
-if [ -f "$NUKE_LOCK" ]; then
+NUKE_PLIST="/Library/LaunchDaemons/com.terminally-distracted.nuke.plist"
+FORCE=0
+
+for arg in "$@"; do
+  [ "$arg" = "--force" ] && FORCE=1
+done
+
+if [ "$FORCE" -eq 1 ] && [ -f "$NUKE_LOCK" ]; then
+  echo "Force-removing nuke lock..."
+  rm -f "$NUKE_LOCK"
+  launchctl unload "$NUKE_PLIST" 2>/dev/null
+  rm -f "$NUKE_PLIST"
+elif [ -f "$NUKE_LOCK" ]; then
   EXPIRY=$(cat "$NUKE_LOCK")
   NOW=$(date +%s)
   if [ "$NOW" -lt "$EXPIRY" ]; then
@@ -21,15 +31,65 @@ fi
 if [ -f "$REBLOCK_PID_FILE" ]; then
   read -r OLD_PID OLD_UNTIL < "$REBLOCK_PID_FILE"
   if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
-    if [ -n "$OLD_UNTIL" ] && REBLOCK_AT=$(date -r "$OLD_UNTIL" '+%H:%M' 2>/dev/null); then
-      echo "Already unblocked. Auto-reblock at $REBLOCK_AT."
+    if [ "$FORCE" -eq 1 ]; then
+      # Kill old reblock timer, will schedule a fresh one
+      kill "$OLD_PID" 2>/dev/null
     else
-      echo "Already unblocked."
+      if [ -n "$OLD_UNTIL" ] && REBLOCK_AT=$(date -r "$OLD_UNTIL" '+%H:%M' 2>/dev/null); then
+        echo "Already unblocked. Auto-reblock at $REBLOCK_AT."
+      else
+        echo "Already unblocked."
+      fi
+      exit 0
     fi
-    exit 0
   fi
   rm -f "$REBLOCK_PID_FILE"
 fi
+
+# --- Shared unblock logic ---
+do_unblock() {
+  # Backup hosts file before modifying
+  cp /etc/hosts /etc/hosts.bak
+
+  # Remove only our marker block from /etc/hosts
+  sed -i "" '/# BEGIN terminally-distracted/,/# END terminally-distracted/d' /etc/hosts
+
+  # Collapse multiple blank lines
+  sed -i "" '/^$/N;/^\n$/d' /etc/hosts
+
+  # Flush DNS
+  dscacheutil -flushcache
+  killall -HUP mDNSResponder
+
+  # Restart apps that cache DNS (Discord, WhatsApp, etc.)
+  for app in Discord WhatsApp; do
+    if pgrep -xq "$app"; then
+      killall "$app" 2>/dev/null
+      sleep 1
+      open -a "$app" 2>/dev/null
+    fi
+  done
+
+  # Schedule re-block in 10 minutes
+  REBLOCK_UNTIL=$(($(date +%s) + 600))
+  (
+    sleep 600
+    rm -f "$REBLOCK_PID_FILE"
+    bash "$SCRIPT_DIR/block.sh"
+    osascript -e 'display notification "Social media blocked again." with title "10 minutes up"' 2>/dev/null
+  ) &
+  printf '%s %s\n' "$!" "$REBLOCK_UNTIL" > "$REBLOCK_PID_FILE"
+  disown
+
+  echo "Done. Unblocked for 10 minutes — will auto-reblock at $(date -v+10M '+%H:%M')."
+}
+
+if [ "$FORCE" -eq 1 ]; then
+  do_unblock
+  exit 0
+fi
+
+# --- Breathing exercise ---
 
 TTY_STATE=$(stty -g </dev/tty 2>/dev/null)
 
@@ -603,38 +663,4 @@ if [ $PY_EXIT -ne 0 ]; then
   exit 0
 fi
 
-# Backup hosts file before modifying
-cp /etc/hosts /etc/hosts.bak
-
-# Remove terminally-distracted entries from /etc/hosts
-sed -i "" '/# BEGIN terminally-distracted/,/# END terminally-distracted/d' /etc/hosts
-
-# Remove blank lines left behind (collapse multiple empty lines to one)
-sed -i "" '/^$/N;/^\n$/d' /etc/hosts
-
-# Clear pf firewall rules
-PF_RULES="/etc/pf.anchors/social-block"
-echo "# No blocks" > "$PF_RULES"
-
-# Remove anchor from pf.conf
-sed -i "" '/social-block/d' /etc/pf.conf
-
-# Reload firewall
-pfctl -f /etc/pf.conf 2>/dev/null
-
-# Flush DNS
-dscacheutil -flushcache
-killall -HUP mDNSResponder
-
-# Schedule re-block in 10 minutes
-REBLOCK_UNTIL=$(($(date +%s) + 600))
-(
-  sleep 600
-  bash "$SCRIPT_DIR/block.sh"
-  rm -f "$REBLOCK_PID_FILE"
-  osascript -e 'display notification "Social media blocked again." with title "10 minutes up"' 2>/dev/null
-) &
-printf '%s %s\n' "$!" "$REBLOCK_UNTIL" > "$REBLOCK_PID_FILE"
-disown
-
-echo "Done. Unblocked for 10 minutes — will auto-reblock at $(date -v+10M '+%H:%M')."
+do_unblock

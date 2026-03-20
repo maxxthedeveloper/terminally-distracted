@@ -1,6 +1,6 @@
 # terminally-distracted
 
-Block social media on macOS using `/etc/hosts` + the `pf` firewall. Unblocking requires a 90-second breathing exercise and confirmation.
+Block social media on macOS using `/etc/hosts`. Unblocking requires a 90-second breathing exercise and confirmation.
 
 ## Requirements
 
@@ -28,8 +28,11 @@ Edit `sites.txt` to add or remove domains (one per line, `#` for comments). Subd
 ## Usage
 
 ```bash
-sudo ./block.sh      # block sites now
-sudo ./unblock.sh    # breathing exercise → confirm → unblock for 10 min
+sudo ./block.sh             # block sites now
+sudo ./unblock.sh           # breathing exercise → unblock for 10 min
+sudo ./unblock.sh --force   # bypass breathing; if nuked, pause enforcement for 10 min
+sudo ./nuke.sh              # hard-block for 24h, no undo
+sudo ./nuke.sh --testnuke   # run the nuke animation without blocking anything
 ```
 
 Unblocking gives you 10 minutes, then sites are automatically re-blocked.
@@ -37,8 +40,7 @@ Unblocking gives you 10 minutes, then sites are automatically re-blocked.
 ## How it works
 
 1. Adds `0.0.0.0` entries to `/etc/hosts` between `# BEGIN terminally-distracted` / `# END terminally-distracted` markers
-2. Resolves domain IPs via `dig` and creates `pf` firewall rules (catches DNS-over-HTTPS)
-3. Flushes DNS cache
+2. Flushes DNS cache
 
 ## Uninstall
 
@@ -46,5 +48,4 @@ Unblocking gives you 10 minutes, then sites are automatically re-blocked.
 sudo launchctl unload /Library/LaunchDaemons/com.terminally-distracted.plist
 sudo rm /Library/LaunchDaemons/com.terminally-distracted.plist
 sudo sed -i "" '/# BEGIN terminally-distracted/,/# END terminally-distracted/d' /etc/hosts
-sudo sed -i "" '/social-block/d' /etc/pf.conf
 ```

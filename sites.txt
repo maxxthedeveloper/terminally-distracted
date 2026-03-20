@@ -19,7 +19,7 @@ ytimg.com
 yt.be
 youtube-nocookie.com
 
-# Discord
+# Discord (desktop app uses gateway + cdn subdomains)
 discord.com
 discordapp.com
 discord.gg
@@ -29,3 +29,25 @@ discord.media
 discord.dev
 discord.gift
 dis.gd
+gateway.discord.gg
+cdn.discordapp.com
+media.discordapp.net
+
+# WhatsApp (desktop app connects via web. subdomain)
+whatsapp.com
+whatsapp.net
+wa.me
+web.whatsapp.com
+static.whatsapp.net
+mmg.whatsapp.net
+pps.whatsapp.net
+
+# LinkedIn
+linkedin.com
+licdn.com
+
+# DNS-over-HTTPS resolvers (prevents hosts bypass)
+dns.google
+cloudflare-dns.com
+dns.quad9.net
+doh.opendns.com
